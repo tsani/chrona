@@ -1,6 +1,5 @@
 module Language.Chrona.Typing where
 
-import Data.Coerce ( coerce )
 import Data.Maybe ( catMaybes )
 import qualified Data.Map as M
 import Data.Text ( Text )
@@ -12,7 +11,6 @@ import Data.Annotation
 import Data.HFunctor
 import Data.HFunctor.Basic
 import Data.HFunctor.TopDown
-import Data.Profunctor
 
 type family Typing' (node :: Node) :: * where
 
@@ -132,56 +130,83 @@ checkTypeScopesTree = hcata (hfmap HFix . topDownConsAnnotate phi) where
         (K CheckTypeScopes b)
         n
         (TypeBindingSiteE b, ASTF (HFix (PAnn '[TypeBindingSiteE, K SrcSpan] ASTF)) b)
-  phi node ann = case collapseIndex node of
+  phi node _ = case collapseIndex node of
     ModuleDeclS -> case node of
       ModuleDecl name decls -> do
-        name' <- withReaderT repackage $ toReaderT name
-        decls' <- traverse (withReaderT repackage . toReaderT) decls
+        name' <- pushDown name
+        decls' <- traverse pushDown decls
         pure ( TypeBindingSiteE (), ModuleDecl name' decls' )
+
     TopLevelDeclS -> case node of
       TermDecl name mty t -> do
-        name' <- withReaderT repackage $ toReaderT name
-        mty' <- traverse (withReaderT repackage . toReaderT) mty
-        t' <- withReaderT repackage $ toReaderT t
+        name' <- pushDown name
+        mty' <- traverse pushDown mty
+        t' <- pushDown t
         pure ( TypeBindingSiteE (), TermDecl name' mty' t' )
+      TypeDecl decl -> do
+        decl' <- pushDown decl
+        pure ( TypeBindingSiteE (), TypeDecl decl' )
+
     TypeDeclS -> case node of
       DataDecl name tys ctors -> do
-        name' <- withReaderT repackage $ toReaderT name
-        tys' <- traverse (withReaderT repackage . toReaderT) tys
-
-        -- now we need to check the constructors in the modified scope
-
-        -- enumerate the bound variables
-        let rtys = reverse tys'
-        let etys = zip [0..] $ rtys
-        let tyNames = ident . stripAnn <$> rtys
-        -- construct the bindings
-        let binders = mkTypeBinding <$> etys
-        -- construct the new scope (as a function that transforms the current
-        -- scope)
-        let newScope = kmap (M.union (M.fromList (zip tyNames binders)))
+        name' <- pushDown name
+        tys' <- traverse pushDown tys
         -- check the constructors in the new scope
-        ctors' <- local newScope $ traverse (withReaderT repackage . toReaderT) ctors
+        ctors' <- withNewBindings tys' $ traverse pushDown ctors
 
         pure ( TypeBindingSiteE (), DataDecl name' tys' ctors' )
+
+      CodataDecl name tys obs -> do
+        name' <- pushDown name
+        tys' <- traverse pushDown tys'
+        -- check the observations in the new scope
+        obs' <- withNewBindings tys' $ traverse pushDown obs
+
+        pure ( TypeBindingSiteE (), CodataDecl name' tys' obs' )
 
     TypeS -> case node of
       NamedType name -> do
         name' <- withReaderT repackage $ toReaderT name
-        pure (TypeBindingSiteE (), NamedType name')
+        pure ( TypeBindingSiteE (), NamedType name' )
         -- need to lift the ReaderT computations into the exception monad so
         -- that we can throw if there are out-of-scope identifiers.
+
     TypeNameS -> case node of
       TypeName i -> do
         i' <- withReaderT repackage $ toReaderT i
         b <- lookupTypeBinding i'
         pure ( TypeBindingSiteE b, TypeName i' )
 
+-- | Converts a topdown traversal with invariant inputs into a reader
+-- computation whose @K@ functor is polymorphic, allowing it to be used
+-- anywhere.
+pushDown :: TopDownHT (K x) m f a -> ReaderT (K x b) m (f a)
+pushDown = withReaderT repackage . toReaderT
+
+-- | Processes the given reader computation in a modified environment where new
+-- type bindings have been introduced.
+withNewBindings
+  :: forall (a :: k) (b :: *) (m :: * -> *).
+    [HFix (PAnn '[TypeBindingSiteE, K SrcSpan] ASTF) 'IdentN]
+  -> ReaderT (K CheckTypeScopes a) m b
+  -> ReaderT (K CheckTypeScopes a) m b
+withNewBindings tys m = do
+  -- enumerate the bound variables
+  let rtys = reverse tys
+  let etys = zip [0..] $ rtys
+  let tyNames = ident . stripAnn <$> rtys
+  -- construct the bindings
+  let binders = mkTypeBinding <$> etys
+  -- construct the new scope (as a function that transforms the current
+  -- scope)
+  let newScope = kmap (M.union (M.fromList (zip tyNames binders)))
+  local newScope m
+
 mkTypeBinding
   :: (Int, HFix (PAnn '[TypeBindingSiteE, K SrcSpan] ASTF) 'IdentN)
   -> (SrcSpan, TypeBinding)
 mkTypeBinding (i, HFix (IAnn ps (Identifier t))) =
-  (unK (getH Proxy ps), TypeBound i) -- where proxy = Proxy @(K SrcSpan)
+  (unK (getH Proxy ps), TypeBound i)
 
 data TypeVariableNotInScope
   = TypeVariableNotInScope
