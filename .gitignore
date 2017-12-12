@@ -1,2 +1,14 @@
 *~
 *.ibc
+*.run.xml
+*.bcf
+*.log
+*.aux
+*.out
+*.nav
+*.toc
+*.snm
+*.vrb
+*.bbl
+*.blg
+writeup.pdf

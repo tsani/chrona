@@ -1,0 +1,43 @@
+data Either a b = Left a | Right b
+
+codata Rec a b = { .step : a -> Either (a, Rec b b) b }
+codata R b = { .done : Either (R b) b }
+
+apply : Rec a b -> a -> R b
+apply r x .done =
+    case r.step x of
+        Left (x, k) -> Left $ do
+            y <- apply r x
+            apply k y
+        Right x -> Right x
+
+instance Functor R where
+    map f r .done = case r.done of
+        Left r' -> Left (map f r')
+        Right x -> Right (f x)
+
+instance Monad R where
+    pure x .done = Right x
+    (r >>= k) .done =
+        case r.done of
+            -- not finished yet, so keep running
+            Left r' -> Left (r' >>= k)
+            -- finished, so continue with the next computation
+            Right x -> Left (k x)
+
+partial
+unsafeRun : R a -> a
+unsafeRun r = case r.done of
+    Left r' -> unsafeRun r'
+    Right x -> x
+
+fib : Rec Nat Nat
+fib .step Z = Right 0
+fib .step (S n) = Right 1
+fib .step (S (S n)) = Left
+    ( n
+    , fun .step r1 -> Left
+        ( S n
+        , fun .step r2 -> Right (r1 + r2)
+        )
+    )

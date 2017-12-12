@@ -16,12 +16,22 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:
+    Data.Apply,
     Data.HFunctor,
+    Data.HFunctor.Basic,
+    Data.HFunctor.TopDown,
     Data.Annotation,
     Data.Reflection,
     Language.Chrona,
+    Language.Chrona.Monad,
+    Language.Chrona.Monad.Error,
+    Language.Chrona.Monad.Types
+    Language.Chrona.Parser,
+    Language.Chrona.Parser.Core,
+    Language.Chrona.Parser.Lexer,
+    Language.Chrona.Parser.Types,
     Language.Chrona.Types,
-    Language.Chrona.Parser
+    Language.Chrona.Typing
   build-depends:
     base >= 4.7 && < 5,
     megaparsec,
@@ -50,6 +60,7 @@ library
     RankNTypes,
     ScopedTypeVariables,
     StandaloneDeriving,
+    TupleSections,
     TypeApplications,
     TypeFamilies,
     TypeOperators,

@@ -4,7 +4,6 @@ module Language.Chrona.Parser
 
 import Data.Annotation
 import Data.HFunctor
-import Data.HFunctor.Basic
 import Language.Chrona.Types
 import Language.Chrona.Parser.Core
 import Language.Chrona.Parser.Lexer
@@ -58,25 +57,25 @@ termDecl = spanAnn $ do
 typeDecl :: Parser (SrcAST 'TypeDeclN)
 typeDecl = dataDecl <|> codataDecl where
   dataDecl :: Parser (SrcAST 'TypeDeclN)
-  dataDecl = spanAnn $ uncurry3 DataDecl <$> common kwData symCtorSep constructor
+  dataDecl = spanAnn $ uncurry DataDecl <$> common kwData symCtorSep constructor
 
   codataDecl :: Parser (SrcAST 'TypeDeclN)
-  codataDecl = spanAnn $ do
-    uncurry3 CodataDecl <$> common kwCodata symObsSep obs
+  codataDecl = spanAnn $ uncurry CodataDecl <$> common kwCodata symObsSep obs
 
   common
     :: String -- ^ the keyword to parse
     -> String -- ^ the separator for the constructors/observations
     -> Parser a -- ^ the parser for one constructor/observation
-    -> Parser (SrcAST 'IdentN, [SrcAST 'IdentN], [a])
+    -> Parser (SrcAST 'IdentN, [a])
   common kw s p = do
     keyword' kw
     name <- identifier
-    params <- many identifier
+    -- no type parameters allowed currently
+    -- params <- many identifier
     symbol' "="
     ps <- p `sepBy` symbol s
     semi
-    pure (name, params, ps)
+    pure (name, ps)
 
   constructor :: Parser (SrcAST 'CtorN)
   constructor = spanAnn $ (uncurry ConstructorDef <$> common2)
@@ -90,9 +89,6 @@ typeDecl = dataDecl <|> codataDecl where
     name <- identifier
     ty <- typ
     pure $ (name, ty)
-
-  uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-  uncurry3 f (x, y, z) = f x y z
 
 term :: Parser (SrcAST 'ExprN)
 term = parens term <|> spanAnn (choice [funExpr, var, app]) where

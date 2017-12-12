@@ -2,7 +2,6 @@ module Language.Chrona.Parser.Types where
 
 import Data.Annotation
 import Data.HFunctor
-import Data.HFunctor.Basic
 import Language.Chrona.Types
 
 import Text.Megaparsec ( SourcePos(..) )

@@ -18,26 +18,42 @@ module Data.HFunctor
   type (:~>)
   -- * Higher-order functors
 , HFunctor(..)
+, HApplicative(..)
+, HMonad(..)
 , (<$$>)
   -- ** Higher-order fixed points and folds
 , HFix(..)
 , hcata
 , hcataM
-  -- * Important HFunctors
+  -- * Important (H)Functors
+, I(..)
+, K(..)
+, Sum(..)
 , HSum(..)
 , HProduct(..)
 , HCompose(..)
 , Promoted(..)
+, Nat (..)
+, Nat' (..)
   -- * Higher-order generic traversals
 , HTraversable(..)
+, TraversableH(..)
   -- * Higher-order equality
 , HEq(..)
+  -- * Higher-order monoids
+, HMonoid(..)
   -- * Miscellaneous
 , rewrite
   -- * Reexports
 , Compose(..)
+, (<&>)
+, (&)
 ) where
 
+import Data.Apply
+import Data.HFunctor.Basic
+
+import Data.Monoid ( (<>) )
 import Data.Function ( on )
 import Data.Functor.Compose
 
@@ -48,6 +64,7 @@ import Data.Functor.Compose
 --
 -- Any regular 'Functor' can be made an instance of HFunctor by choosing
 -- @k ~ ()@, since @() -> *@ is isomorphic to @*@.
+-- 'Promoted' shows that this is true.
 class HFunctor (h :: (k -> *) -> k -> *) where
   -- | A higher-order 'fmap'. By contrast with the simple @fmap@ which lifts
   -- simple functions into functions operating in the Functor, hfmap lifts
@@ -67,7 +84,7 @@ newtype Promoted (f :: * -> *) (uf :: () -> *) (u :: ())
     }
 
 instance Functor f => HFunctor (Promoted f) where
-  hfmap nat (Promoted x) = Promoted (nat <$> x)
+  hfmap phi (Promoted x) = Promoted (phi <$> x)
 
 -- | Natural transformations.
 --
@@ -154,12 +171,12 @@ instance (HFunctor h1, HFunctor h2) => HFunctor (HProduct h1 h2) where
 -- | Sum HFunctor.
 --
 -- We have left and right branches to choose between two HFunctors.
-data HSum h1 h2 f a = L (h1 f a) | R (h2 f a)
+data HSum h1 h2 f a = HL (h1 f a) | HR (h2 f a)
 
 instance (HFunctor h1, HFunctor h2) => HFunctor (HSum h1 h2) where
   hfmap phi s = case s of
-    L h -> L (hfmap phi h)
-    R h -> R (hfmap phi h)
+    HL h -> HL (hfmap phi h)
+    HR h -> HR (hfmap phi h)
 
 -- | Composed HFunctor.
 --
@@ -194,3 +211,110 @@ class HFunctor h => HTraversable (h :: (k -> *) -> k -> *) where
     -> h f a
     -> m (h g a)
   traverseH f = sequenceH . hfmap (Compose . f)
+
+  -- Not generally implementable!
+  -- htraverse
+  --   :: HApplicative j
+  --   => (forall (b :: k). f b -> j g b)
+  --   -> h f a
+  --   -> j (h g) a
+
+-- but we _can_ implement a special case for lists.
+-- hsequence :: HApplicative j => [j g a] -> j (Compose [] g) a
+-- hsequence [] = hpure $ Compose []
+-- hsequence (x:xs) = (hpure phi) <**> x <**> hsequence xs where
+--   phi :: Nat' g a (Nat' (Compose [] g) a (Compose [] g)) a
+--   phi = Nat' $ \x' -> Nat' $ \(Compose xs') -> Compose (x' : xs')
+
+-- traverse :: (a -> f b) -> t a -> f (t a)
+
+class TraversableH t where
+  htraverse
+    :: HApplicative h
+    => (f :~> h g)
+    -> t (f a)
+    -> h (Compose t g) a
+
+  hsequence
+    :: HApplicative h
+    => t (h f a)
+    -> h (Compose t f) a
+
+instance TraversableH [] where
+  htraverse _ [] = hpure (Compose [])
+  htraverse phi (x:xs) = hpure f <**> phi x <**> htraverse phi xs where
+    f = Nat' $ \x' -> Nat' $ \(Compose xs') -> Compose (x' : xs')
+
+  hsequence [] = hpure $ Compose []
+  hsequence (x:xs) = (hpure phi) <**> x <**> hsequence xs where
+    phi = Nat' $ \x' -> Nat' $ \(Compose xs') -> Compose (x' : xs')
+
+instance TraversableH Maybe where
+  htraverse _ Nothing = hpure (Compose Nothing)
+  htraverse phi (Just x) = hpure f <**> phi x where
+    f :: Nat' g a (Compose Maybe g) a
+    f = Nat' $ \x' -> Compose (Just x')
+
+  hsequence Nothing = hpure (Compose Nothing)
+  hsequence (Just x) = hpure f <**> x where
+    f = Nat' $ \x' -> Compose (Just x')
+
+
+-- | A natural transformation that we can partially apply.
+newtype Nat (f :: k -> *) (g :: k -> *) (a :: k)
+  = Nat { nat :: f a -> g a }
+
+instance Apply (Nat f g a) where
+  type Input (Nat f g a) = f a
+  type Output (Nat f g a) = g a
+  apply (Nat f) x = f x
+
+instance HFunctor (Nat f) where
+  hfmap phi (Nat psi) = Nat (phi . psi)
+
+newtype Nat' (f :: k -> *) (b :: k) (g :: k -> *) (a :: k)
+  = Nat' { nat' :: f b -> g a }
+
+instance HFunctor (Nat' f b) where
+  hfmap phi (Nat' psi) = Nat' (phi . psi)
+
+instance HApplicative (Nat' f c) where
+  hpure x = Nat' $ \_ -> x
+  Nat' phi <**> Nat' x = Nat' $ \z ->
+    let x' = x z
+        (Nat' y) = phi z
+        in y x'
+
+class HMonoid (f :: k -> *) where
+  hempty :: f a
+  (<^>) :: f a -> f a -> f a
+
+-- | Any monoid can be promoted to a HMonoid using a constant.
+instance Monoid x => HMonoid (K x) where
+  hempty = K mempty
+  K x <^> K y = K (x <> y)
+
+class HFunctor h => HApplicative h where
+  hpure :: f a -> h f a
+  (<**>) :: h (Nat' f a g) b -> h f a -> h g b
+
+class HApplicative h => HMonad h where
+  (>^>=) :: h f a -> (f :~> h g) -> h g a
+
+data Sum (f :: k -> *) (a :: k) (g :: k -> *) (b :: k)
+  = L (f a)
+  | R (g b)
+
+instance HFunctor (Sum g a) where
+  hfmap phi (R x) = R (phi x)
+  hfmap _ (L x) = L x
+
+instance HApplicative (Sum g a) where
+  hpure = R
+  R (Nat' f) <**> R x = R (f x)
+  L x <**> _ = L x
+  _ <**> L x = L x
+
+(&) :: a -> (a -> b) -> b
+(&) = flip ($)
+infixr 0 &

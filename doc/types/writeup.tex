@@ -1,0 +1,41 @@
+\documentclass[11pt,letterpaper]{article}
+\usepackage[geometry]{jakemath}
+
+\begin{document}
+
+\newcommand{\prev}{\operatorname{\mathtt{.prev}}}
+\renewcommand{\synth}{\mathbin{\searrow}}
+\newcommand{\goal}{\mathbin{>}}
+\newcommand{\Next}{\bigcirc}
+\newcommand{\fun}{\operatorname{\mathtt{fun}}}
+
+Copattern typing with temporal contexts:
+%
+\begin{equation*}
+  \boxed{\Gamma \goal S \proves^n q \synth^k T}
+\end{equation*}
+%
+``Copattern $q$ at time $n$ is checked in context $\Gamma$ with goal $S$
+synthesizing type $T$ at time $k$.''
+
+Key rules:
+%
+\begin{equation*}
+  \infer{
+    \Gamma \goal \Next S \proves^n \prev q \synth^k T
+  }{
+    \Gamma \goal S \proves^{n+1} q \synth^k T
+  }
+  \quad
+  \quad
+  \infer{
+    \Gamma \goal S \proves^n \cdot \synth^n S
+  }{}
+\end{equation*}
+%
+\begin{equation*}
+  \infer{
+    \Gamma \proves^n 
+\end{equation*}
+
+\end{document}

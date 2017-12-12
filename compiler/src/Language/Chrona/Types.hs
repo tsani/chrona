@@ -13,7 +13,6 @@ data Node
   | ExprN
   | TypeN
   | CtorN
-  | FieldN
   | ObsN
   | PatternN
   | CopatternN
@@ -31,7 +30,6 @@ data NodeS (n :: Node) :: * where
   ExprS :: NodeS 'ExprN
   TypeS :: NodeS 'TypeN
   CtorS :: NodeS 'CtorN
-  FieldS :: NodeS 'FieldN
   ObsS :: NodeS 'ObsN
   PatternS :: NodeS 'PatternN
   CopatternS :: NodeS 'CopatternN
@@ -50,7 +48,6 @@ instance PolyEq NodeS where
     (ExprS, ExprS) -> True
     (TypeS, TypeS) -> True
     (CtorS, CtorS) -> True
-    (FieldS, FieldS) -> True
     (ObsS, ObsS) -> True
     (PatternS, PatternS) -> True
     (CopatternS, CopatternS) -> True
@@ -68,7 +65,6 @@ instance Reflect 'FunEquationN where reflect _ = FunEquationS
 instance Reflect 'ExprN where reflect _ = ExprS
 instance Reflect 'TypeN where reflect _ = TypeS
 instance Reflect 'CtorN where reflect _ = CtorS
-instance Reflect 'FieldN where reflect _ = FieldS
 instance Reflect 'ObsN where reflect _ = ObsS
 instance Reflect 'PatternN where reflect _ = PatternS
 instance Reflect 'CopatternN where reflect _ = CopatternS
@@ -98,13 +94,13 @@ data ASTF :: (Node -> *) -> Node -> * where
 
   DataDecl
     :: ast 'IdentN -- the name of the type
-    -> [ast 'IdentN] -- the names of any type parameters
+    -- -> [ast 'IdentN] -- the names of any type parameters
     -> [ast 'CtorN] -- the constructors
     -> ASTF ast 'TypeDeclN
 
   CodataDecl
     :: ast 'IdentN -- the name of the type
-    -> [ast 'IdentN] -- the names of any type parameters
+    -- -> [ast 'IdentN] -- the names of any type parameters
     -> [ast 'ObsN] -- the observations
     -> ASTF ast 'TypeDeclN
 
@@ -186,6 +182,10 @@ data ASTF :: (Node -> *) -> Node -> * where
 
   ---- MISC
 
+  Observation
+    :: ast 'IdentN
+    -> ASTF ast 'ObservationN
+
   TypeName
     :: ast 'IdentN
     -> ASTF ast 'TypeNameN
@@ -211,6 +211,11 @@ data ASTF :: (Node -> *) -> Node -> * where
     -> ast 'ExprN
     -> ASTF ast 'ExprN
 
+  Constructor
+    :: ast 'IdentN
+    -> ast 'ExprN
+    -> ASTF ast 'ExprN
+
   Var
     :: ast 'IdentN
     -> ASTF ast 'ExprN
@@ -218,10 +223,6 @@ data ASTF :: (Node -> *) -> Node -> * where
   ObservationExpr
     :: ast 'ObservationN
     -> ASTF ast 'ExprN
-
-  Observation
-    :: ast 'IdentN
-    -> ASTF ast 'ObservationN
 
 -- | Extracts the textual representation of an identifier.
 ident :: HFix ASTF 'IdentN -> Text
@@ -231,33 +232,33 @@ typeName :: HFix ASTF 'TypeNameN -> Text
 typeName (HFix (TypeName i)) = ident i
 
 instance HFunctor ASTF where
-  hfmap nat h = case h of
-    ModuleDecl i ds -> ModuleDecl (nat i) (nat <$> ds)
-    TermDecl i m e -> TermDecl (nat i) (nat <$> m) (nat e)
-    TypeDecl d -> TypeDecl (nat d)
-    DataDecl i is cs -> DataDecl (nat i) (nat <$> is) (nat <$> cs)
-    CodataDecl i is os -> CodataDecl (nat i) (nat <$> is) (nat <$> os)
-    ConstructorDef i t -> ConstructorDef (nat i) (nat t)
-    DestructorDef i t -> DestructorDef (nat i) (nat t)
+  hfmap phi h = case h of
+    ModuleDecl i ds -> ModuleDecl (phi i) (phi <$> ds)
+    TermDecl i m e -> TermDecl (phi i) (phi <$> m) (phi e)
+    TypeDecl d -> TypeDecl (phi d)
+    DataDecl i cs -> DataDecl (phi i) (phi <$> cs)
+    CodataDecl i os -> CodataDecl (phi i) (phi <$> os)
+    ConstructorDef i t -> ConstructorDef (phi i) (phi t)
+    DestructorDef i t -> DestructorDef (phi i) (phi t)
     EmptyCopattern -> EmptyCopattern
-    CopatternPattern p c -> CopatternPattern (nat p) (nat c)
-    ObservationCopattern o c -> ObservationCopattern (nat o) (nat c)
-    PatternVar i -> PatternVar (nat i)
-    PairPattern p1 p2 -> PairPattern (nat p1) (nat p2)
-    ConstructorPattern i p -> ConstructorPattern (nat i) (nat p)
+    CopatternPattern p c -> CopatternPattern (phi p) (phi c)
+    ObservationCopattern o c -> ObservationCopattern (phi o) (phi c)
+    PatternVar i -> PatternVar (phi i)
+    PairPattern p1 p2 -> PairPattern (phi p1) (phi p2)
+    ConstructorPattern i p -> ConstructorPattern (phi i) (phi p)
     UnderscorePattern -> UnderscorePattern
-    ArrowType t1 t2 -> ArrowType (nat t1) (nat t2)
-    ProductType t1 t2 -> ProductType (nat t1) (nat t2)
-    Next t -> Next (nat t)
-    NamedType i -> NamedType (nat i)
+    ArrowType t1 t2 -> ArrowType (phi t1) (phi t2)
+    ProductType t1 t2 -> ProductType (phi t1) (phi t2)
+    Next t -> Next (phi t)
+    NamedType i -> NamedType (phi i)
     Identifier t -> Identifier t
-    Fun eqs -> Fun (nat <$> eqs)
-    FunEquation c e -> FunEquation (nat c) (nat e)
-    App e1 e2 -> App (nat e1) (nat e2)
-    Var i -> Var (nat i)
-    ObservationExpr o -> ObservationExpr (nat o)
-    Observation i -> Observation (nat i)
-    TypeName i -> TypeName (nat i)
+    Fun eqs -> Fun (phi <$> eqs)
+    FunEquation c e -> FunEquation (phi c) (phi e)
+    App e1 e2 -> App (phi e1) (phi e2)
+    Var i -> Var (phi i)
+    ObservationExpr o -> ObservationExpr (phi o)
+    Observation i -> Observation (phi i)
+    TypeName i -> TypeName (phi i)
 
 instance HTraversable ASTF where
   sequenceH node = case node of
@@ -266,10 +267,10 @@ instance HTraversable ASTF where
     TermDecl (Compose i) (traverse getCompose -> m) (Compose e) ->
       TermDecl <$> i <*> m <*> e
     TypeDecl (Compose d) -> TypeDecl <$> d
-    DataDecl (Compose i) (traverse getCompose -> is) (traverse getCompose -> cs) ->
-      DataDecl <$> i <*> is <*> cs
-    CodataDecl (Compose i) (traverse getCompose -> is) (traverse getCompose -> os) ->
-      CodataDecl <$> i <*> is <*> os
+    DataDecl (Compose i) (traverse getCompose -> cs) ->
+      DataDecl <$> i <*> cs
+    CodataDecl (Compose i) (traverse getCompose -> os) ->
+      CodataDecl <$> i <*> os
     ConstructorDef (Compose i) (Compose t) ->
       ConstructorDef <$> i <*> t
     DestructorDef (Compose i) (Compose t) ->
@@ -316,8 +317,8 @@ collapseIndex node = case node of
   ModuleDecl _ _ -> ModuleDeclS
   TermDecl _ _ _ -> TopLevelDeclS
   TypeDecl _ -> TopLevelDeclS
-  DataDecl _ _ _ -> TypeDeclS
-  CodataDecl _ _ _ -> TypeDeclS
+  DataDecl _ _ -> TypeDeclS
+  CodataDecl _ _ -> TypeDeclS
   ConstructorDef _ _ -> CtorS
   DestructorDef _ _ -> ObsS
   EmptyCopattern -> CopatternS

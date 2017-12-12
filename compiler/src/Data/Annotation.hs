@@ -18,7 +18,7 @@ module Data.Annotation
 , topAnn
 , mapTopAnn
   -- ** Combinators
-, reannotate'
+, reannotate
 , reannotateTree
 , reannotateM
 , singleton
@@ -27,6 +27,7 @@ module Data.Annotation
 , consAnnotateM
 , topDownConsAnnotate
 , topDownConsAnnotateM
+-- , reannotateHeadM
   -- * Crazy stuff
 , P(..)
 , PAnn
@@ -131,11 +132,11 @@ stripAnn = hcata (HFix . bare)
 --
 -- If you don't care about the node and just want to rewrite the annotation,
 -- then use @reannotate (const f)@.
-reannotate'
+reannotate
   :: forall (h :: (k -> *) -> k -> *) (p :: k -> *) (q :: k -> *) (f :: k -> *).
     (forall (a :: k). h f a -> p a -> q a)
   -> IAnn p h f :~> IAnn q h f
-reannotate' f (IAnn a node) = IAnn (f node a) node
+reannotate f (IAnn a node) = IAnn (f node a) node
 
 -- | Adds a new annotation to a list of annotations.
 consAnnotate
@@ -174,7 +175,7 @@ reannotateTree
   => (forall b. h (HFix (IAnn q h)) b -> p b -> q b)
   -> FixAnn p h a
   -> FixAnn q h a
-reannotateTree f = hcata (HFix . reannotate' f)
+reannotateTree f = hcata (HFix . reannotate f)
 
 -- | Combinator for rewriting annotations monadically.
 --
@@ -191,6 +192,21 @@ reannotateM
   => (forall (a :: k). h f a -> p a -> m (q a))
   -> (forall (a :: k). IAnn p h f a -> m (IAnn q h f a))
 reannotateM f (IAnn a node) = IAnn <$> (f node a) <*> pure node
+
+-- reannotateHeadM
+--   :: forall
+--     (m :: * -> *)
+--     (h :: (k -> *) -> k -> *)
+--     (p :: k -> *)
+--     (q :: k -> *)
+--     (ps :: [k -> *])
+--     (f :: k -> *).
+--     Applicative m
+--   => (forall (a :: k). h f a -> p a -> m (q a))
+--   -> (forall (a :: k). PAnn (p ': ps) h f a -> m (PAnn (q ': ps) h f a))
+-- reannotateHeadM phi = reannotateM phi' where
+--   phi' :: forall (a :: k). h f a ->
+--   phi' node (PCons p ps) = PCons <$> phi node p <*> ps
 
 -- reannotateTreeM
 --   :: forall
